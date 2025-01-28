@@ -2,6 +2,7 @@
 
 #include <Common/ObjectStorageKeyGenerator.h>
 
+#include <vector>
 #include <filesystem>
 #include <map>
 #include <optional>

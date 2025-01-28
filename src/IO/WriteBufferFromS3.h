@@ -9,6 +9,7 @@
 #include <IO/WriteBufferFromFileBase.h>
 #include <IO/WriteBuffer.h>
 #include <IO/WriteSettings.h>
+#include <IO/StdIStreamFromMemory.h>
 #include <IO/S3Settings.h>
 #include <Common/threadPoolCallbackRunner.h>
 #include <IO/S3/BlobStorageLogWriter.h>
@@ -59,7 +60,24 @@ private:
     String getVerboseLogDetails() const;
     String getShortLogDetails() const;
 
-    struct PartData;
+    struct PartData
+    {
+        Memory<> memory;
+        size_t data_size = 0;
+
+        std::shared_ptr<std::iostream> createAwsBuffer()
+        {
+            auto buffer = std::make_shared<StdIStreamFromMemory>(memory.data(), data_size);
+            buffer->exceptions(std::ios::badbit);
+            return buffer;
+        }
+
+        bool isEmpty() const
+        {
+            return data_size == 0;
+        }
+    };
+
     void hidePartialData();
     void reallocateFirstBuffer();
     void detachBuffer();

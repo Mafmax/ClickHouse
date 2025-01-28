@@ -34,12 +34,6 @@ namespace ErrorCodes
     extern const int LOGICAL_ERROR;
 }
 
-struct WriteBufferFromAzureBlobStorage::PartData
-{
-    Memory<> memory;
-    size_t data_size = 0;
-};
-
 BufferAllocationPolicyPtr createBufferAllocationPolicy(const AzureBlobStorage::RequestSettings & settings)
 {
     BufferAllocationPolicy::Settings allocation_settings;

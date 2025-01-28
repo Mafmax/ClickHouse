@@ -46,7 +46,11 @@ public:
     void sync() override { next(); }
 
 private:
-    struct PartData;
+    struct PartData
+    {
+        Memory<> memory;
+        size_t data_size = 0;
+    };
 
     void writeMultipartUpload();
     void writePart(PartData && part_data);
@@ -84,7 +88,7 @@ private:
 
     char fake_buffer_when_prefinalized[1] = {};
 
-    bool first_buffer=true;
+    bool first_buffer = true;
 
     size_t total_size = 0;
     size_t hidden_size = 0;
