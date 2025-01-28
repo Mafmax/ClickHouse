@@ -6,6 +6,7 @@ set(SRCS
 "${LIBCXX_SOURCE_DIR}/src/algorithm.cpp"
 "${LIBCXX_SOURCE_DIR}/src/any.cpp"
 "${LIBCXX_SOURCE_DIR}/src/atomic.cpp"
+"${LIBCXX_SOURCE_DIR}/src/expected.cpp"
 "${LIBCXX_SOURCE_DIR}/src/barrier.cpp"
 "${LIBCXX_SOURCE_DIR}/src/bind.cpp"
 "${LIBCXX_SOURCE_DIR}/src/call_once.cpp"
