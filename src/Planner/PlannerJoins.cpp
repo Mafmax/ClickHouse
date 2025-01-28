@@ -251,12 +251,19 @@ const ActionsDAG::Node * appendExpression(
 class ColumnsToNullableVisitor final : public InDepthQueryTreeVisitor<ColumnsToNullableVisitor>
 {
 public:
+
     ColumnsToNullableVisitor(const JoinNode & join_node, const ContextPtr & context_)
         : context(context_)
-        , left_table_expression(join_node.getLeftTableExpression().get())
-        , right_table_expression(join_node.getRightTableExpression().get())
         , join_kind(join_node.getKind())
     {
+        getTableExpressions(join_node.getLeftTableExpression(), left_table_expressions);
+        getTableExpressions(join_node.getRightTableExpression(), right_table_expressions);
+    }
+
+    static bool needChildVisit(const QueryTreeNodePtr &, const QueryTreeNodePtr & node)
+    {
+        return node->getNodeType() != QueryTreeNodeType::QUERY
+            && node->getNodeType() != QueryTreeNodeType::UNION;
     }
 
     bool shouldTraverseTopToBottom() const { return false; }
@@ -267,9 +274,9 @@ public:
         if (const auto * column_node = node->as<ColumnNode>())
         {
             const auto * column_src = column_node->getColumnSource().get();
-            if (left_table_expression == column_src)
+            if (left_table_expressions.contains(column_src))
                 table_side.emplace(JoinTableSide::Left);
-            if (right_table_expression == column_src)
+            if (right_table_expressions.contains(column_src))
                 table_side.emplace(JoinTableSide::Right);
         }
 
@@ -285,22 +292,37 @@ public:
             rerunFunctionResolve(function_node, context);
     }
 
-    static QueryTreeNodePtr apply(const QueryTreeNodePtr & node, const JoinNode & join_node, const ContextPtr & context)
-    {
-        if (!context->getSettingsRef()[Setting::join_use_nulls])
-            return node;
-        ColumnsToNullableVisitor visitor(join_node, context);
-        auto result_node = node->clone();
-        visitor.visit(result_node);
-        return result_node;
-    }
-
 private:
     const ContextPtr & context;
-    const IQueryTreeNode * left_table_expression;
-    const IQueryTreeNode * right_table_expression;
+    using TableExpressionSet = std::unordered_set<const IQueryTreeNode *>;
+
+    static TableExpressionSet getTableExpressions(const QueryTreeNodePtr & node, TableExpressionSet & result)
+    {
+        if (const auto * join_node = node->as<JoinNode>())
+        {
+            getTableExpressions(join_node->getLeftTableExpression(), result);
+            getTableExpressions(join_node->getRightTableExpression(), result);
+        }
+        else
+            result.insert(node.get());
+
+        return result;
+    }
+
+    TableExpressionSet left_table_expressions;
+    TableExpressionSet right_table_expressions;
     JoinKind join_kind;
 };
+
+QueryTreeNodePtr applyJoinUseNullsVisitor(const QueryTreeNodePtr & node, const JoinNode & join_node, const ContextPtr & context)
+{
+    if (!context->getSettingsRef()[Setting::join_use_nulls])
+        return node;
+    ColumnsToNullableVisitor visitor(join_node, context);
+    auto result_node = node->clone();
+    visitor.visit(result_node);
+    return result_node;
+}
 
 void buildJoinClauseImpl(
     ActionsDAG & left_dag,
@@ -406,7 +428,7 @@ void buildJoinClauseImpl(
         }
         else
         {
-            auto nullable_join_expression = ColumnsToNullableVisitor::apply(join_expression, join_node, planner_context->getQueryContext());
+            auto nullable_join_expression = applyJoinUseNullsVisitor(join_expression, join_node, planner_context->getQueryContext());
             const auto * node = appendExpression(joined_dag, nullable_join_expression, planner_context, join_node);
             join_clause.addResidualCondition(node);
         }
@@ -425,7 +447,7 @@ void buildJoinClauseImpl(
         }
         else
         {
-            auto nullable_join_expression = ColumnsToNullableVisitor::apply(join_expression, join_node, planner_context->getQueryContext());
+            auto nullable_join_expression = applyJoinUseNullsVisitor(join_expression, join_node, planner_context->getQueryContext());
             const auto * node = appendExpression(joined_dag, nullable_join_expression, planner_context, join_node);
             join_clause.addResidualCondition(node);
         }
@@ -935,7 +957,7 @@ JoinClausesAndActions buildJoinClausesAndActions(
         if (result.join_clauses.size() > 1)
         {
             ActionsDAG residual_join_expressions_actions(result_relation_columns);
-            auto nullable_join_expression = ColumnsToNullableVisitor::apply(join_expression, join_node, planner_context->getQueryContext());
+            auto nullable_join_expression = applyJoinUseNullsVisitor(join_expression, join_node, planner_context->getQueryContext());
             PlannerActionsVisitor join_expression_visitor(planner_context);
             auto join_expression_dag_node_raw_pointers = join_expression_visitor.visit(residual_join_expressions_actions, nullable_join_expression);
             if (join_expression_dag_node_raw_pointers.size() != 1)
